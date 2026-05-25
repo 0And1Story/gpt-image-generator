@@ -1,0 +1,16 @@
+{
+  "name": "gpt-image-2-generation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple web app for generating images with gpt-image-2.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "openai": "^6.39.0"
+  }
+}

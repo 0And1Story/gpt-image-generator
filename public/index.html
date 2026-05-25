@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPT Image 2 生成器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="panel">
+        <h1>GPT Image 2 生成器</h1>
+        <p class="muted">
+          按照官方图片生成文档提供常用参数。生成结果会保存到本地，页面可直接查看历史记录。
+        </p>
+
+        <form id="generate-form" class="form">
+          <label>
+            <span>提示词</span>
+            <textarea
+              id="prompt"
+              name="prompt"
+              rows="5"
+              placeholder="例如：一只在雨夜霓虹街头打伞的橘猫，电影感，写实"
+            ></textarea>
+          </label>
+
+          <div class="grid">
+            <label>
+              <span>尺寸</span>
+              <select id="size" name="size"></select>
+            </label>
+
+            <label id="custom-size-wrap" class="hidden">
+              <span>自定义尺寸</span>
+              <input id="customSize" name="customSize" type="text" placeholder="例如 1536x864" />
+            </label>
+
+            <label>
+              <span>质量</span>
+              <select id="quality" name="quality"></select>
+            </label>
+
+            <label>
+              <span>格式</span>
+              <select id="outputFormat" name="outputFormat"></select>
+            </label>
+
+            <label>
+              <span>压缩质量</span>
+              <input id="outputCompression" name="outputCompression" type="number" min="0" max="100" value="90" />
+            </label>
+          </div>
+
+          <details class="advanced">
+            <summary>高级设置</summary>
+
+            <div class="grid advanced-grid">
+              <label>
+                <span>背景</span>
+                <select id="background" name="background"></select>
+              </label>
+
+              <label>
+                <span>内容审核</span>
+                <select id="moderation" name="moderation"></select>
+              </label>
+
+              <label>
+                <span>生成张数</span>
+                <select id="n" name="n"></select>
+              </label>
+
+              <label class="checkbox-label">
+                <span>启用流式返回</span>
+                <input id="stream" name="stream" type="checkbox" />
+              </label>
+
+              <label id="partial-images-wrap" class="hidden">
+                <span>中间预览数量</span>
+                <select id="partialImages" name="partialImages"></select>
+              </label>
+
+              <label class="wide-field">
+                <span>用户标识</span>
+                <input id="user" name="user" type="text" placeholder="可选，用于审计或区分调用方" />
+              </label>
+            </div>
+          </details>
+
+          <button id="submit-button" type="submit">生成图片</button>
+        </form>
+
+        <div id="status" class="status"></div>
+        <div id="env-status" class="status"></div>
+      </section>
+
+      <section class="panel">
+        <div class="preview-header">
+          <h2>最新结果</h2>
+          <button id="refresh-history" type="button" class="ghost-button">刷新历史</button>
+        </div>
+        <div id="latest-result" class="empty-state">还没有生成记录。</div>
+      </section>
+
+      <section class="panel">
+        <h2>历史记录</h2>
+        <div id="history-list" class="history-list"></div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

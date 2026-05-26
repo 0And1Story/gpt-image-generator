@@ -8,6 +8,7 @@
 
 - 网页输入提示词并生成图片
 - 支持标准尺寸和自定义分辨率
+- 支持上传参考图进行参考生成
 - 支持 `quality`、`background`、`moderation`
 - 支持 `output_format`、`output_compression`
 - 支持一次生成多张图 `n`
@@ -87,6 +88,7 @@ http://localhost:3000
 基础参数：
 
 - `prompt`
+- `referenceImages`
 - `size`
 - `customSize`
 - `quality`
@@ -223,6 +225,17 @@ http://localhost:3000
 
 可选字符串，用于区分调用方或审计用途。
 
+### `referenceImages`
+
+说明：
+
+- 可上传 1 到 16 张参考图
+- 有参考图时，后端会按官方方式改走 `images.edit`
+- 支持 `png`、`jpg`、`jpeg`、`webp`
+- 单文件大小限制为 50MB
+
+页面会先本地预览参考图，请求记录和历史卡片也会展示参考图摘要。
+
 ## 数据持久化
 
 程序会自动使用以下目录：
@@ -246,6 +259,7 @@ data/
 
 - 请求参数
 - `apiBaseUrl`
+- 参考图信息
 - 成功或失败状态
 - 响应摘要
 - 请求 ID
@@ -305,6 +319,8 @@ data/
   "user": "demo-user-001"
 }
 ```
+
+如果要通过表单上传参考图，请使用 `multipart/form-data`，字段名为 `referenceImages`。
 
 成功响应会包含：
 

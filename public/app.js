@@ -1,5 +1,8 @@
 const form = document.getElementById("generate-form");
 const promptInput = document.getElementById("prompt");
+const referenceImagesInput = document.getElementById("referenceImages");
+const referencePreview = document.getElementById("reference-preview");
+const clearReferenceImagesButton = document.getElementById("clear-reference-images");
 const sizeInput = document.getElementById("size");
 const qualityInput = document.getElementById("quality");
 const outputFormatInput = document.getElementById("outputFormat");
@@ -19,6 +22,8 @@ const envStatusBox = document.getElementById("env-status");
 const latestResult = document.getElementById("latest-result");
 const historyList = document.getElementById("history-list");
 const refreshHistoryButton = document.getElementById("refresh-history");
+let selectedReferenceFiles = [];
+const referencePreviewUrlMap = new Map();
 
 function setStatus(message, isError = false) {
   statusBox.textContent = message;
@@ -109,6 +114,94 @@ function buildImagesHtml(images) {
   `;
 }
 
+function buildReferenceImagesHtml(images) {
+  if (!Array.isArray(images) || !images.length) {
+    return "";
+  }
+
+  return `
+    <div class="reference-list">
+      ${images
+        .map(
+          (image, index) => `
+            <figure class="reference-item">
+              <img src="${image.referenceUrl}" alt="Reference image ${index + 1}" />
+              <figcaption>参考图 ${index + 1}</figcaption>
+            </figure>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function getReferenceFileKey(file) {
+  return [file.name, file.size, file.lastModified].join("::");
+}
+
+function getReferencePreviewUrl(file) {
+  const key = getReferenceFileKey(file);
+  if (!referencePreviewUrlMap.has(key)) {
+    referencePreviewUrlMap.set(key, URL.createObjectURL(file));
+  }
+  return referencePreviewUrlMap.get(key);
+}
+
+function releaseReferencePreviewUrl(file) {
+  const key = getReferenceFileKey(file);
+  const url = referencePreviewUrlMap.get(key);
+  if (url) {
+    URL.revokeObjectURL(url);
+    referencePreviewUrlMap.delete(key);
+  }
+}
+
+function syncReferenceInputFiles() {
+  const dataTransfer = new DataTransfer();
+  selectedReferenceFiles.forEach((file) => dataTransfer.items.add(file));
+  referenceImagesInput.files = dataTransfer.files;
+}
+
+function renderReferencePreview() {
+  const items = selectedReferenceFiles
+    .map((file, index) => {
+      const objectUrl = getReferencePreviewUrl(file);
+      return `
+        <figure class="reference-tile reference-tile-filled">
+          <div class="reference-frame">
+            <img src="${objectUrl}" alt="${escapeHtml(file.name)}" />
+            <button
+              class="reference-remove-button"
+              type="button"
+              data-action="remove-reference-image"
+              data-reference-index="${index}"
+              aria-label="移除参考图"
+              title="移除这张参考图"
+            ></button>
+          </div>
+          <figcaption>${escapeHtml(file.name)}</figcaption>
+        </figure>
+      `;
+    })
+    .join("");
+
+  const addTile = `
+    <button
+      class="reference-tile reference-add-tile"
+      type="button"
+      data-action="pick-reference-images"
+      aria-label="添加参考图"
+      title="添加参考图"
+    >
+      <span class="reference-add-icon" aria-hidden="true"></span>
+      <span class="reference-add-label">添加参考图</span>
+    </button>
+  `;
+
+  referencePreview.innerHTML = `${items}${addTile}`;
+  clearReferenceImagesButton.classList.toggle("hidden", !selectedReferenceFiles.length);
+}
+
 function buildResponseSummary(item) {
   const response = item.response || item.apiResponse || null;
   if (!response) {
@@ -180,9 +273,13 @@ function renderCard(item, { compact = false } = {}) {
     .join("");
   const streamText = item.request.stream ? `已启用，partial_images=${item.request.partialImages}` : "未启用";
   const responseSummary = buildResponseSummary(item);
+  const referenceImagesHtml = buildReferenceImagesHtml(
+    (item.result && item.result.referenceImages) || item.request.referenceImages || []
+  );
 
   return `
     <article class="${compact ? "history-card" : "result-card"}">
+      ${referenceImagesHtml}
       ${buildImagesHtml(images)}
       <div class="meta">
         <div><strong>时间：</strong>${escapeHtml(formatDate(item.createdAt))}</div>
@@ -304,6 +401,46 @@ async function openImageFolder(imagePath) {
   }
 }
 
+function addReferenceFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) {
+    return;
+  }
+
+  const existingKeys = new Set(selectedReferenceFiles.map((file) => getReferenceFileKey(file)));
+  for (const file of files) {
+    const key = getReferenceFileKey(file);
+    if (!existingKeys.has(key)) {
+      selectedReferenceFiles.push(file);
+      existingKeys.add(key);
+    }
+  }
+
+  syncReferenceInputFiles();
+  renderReferencePreview();
+}
+
+function removeReferenceFileByIndex(index) {
+  if (Number.isNaN(index) || index < 0 || index >= selectedReferenceFiles.length) {
+    return;
+  }
+
+  const [removedFile] = selectedReferenceFiles.splice(index, 1);
+  if (removedFile) {
+    releaseReferencePreviewUrl(removedFile);
+  }
+  syncReferenceInputFiles();
+  renderReferencePreview();
+}
+
+function clearReferenceFiles() {
+  selectedReferenceFiles.forEach((file) => releaseReferencePreviewUrl(file));
+  selectedReferenceFiles = [];
+  referenceImagesInput.value = "";
+  syncReferenceInputFiles();
+  renderReferencePreview();
+}
+
 function handleCardClick(event) {
   const button = event.target.closest('button[data-action="open-image-folder"]');
   if (!button) {
@@ -313,23 +450,43 @@ function handleCardClick(event) {
   openImageFolder(button.dataset.imagePath || "");
 }
 
+function handleReferencePreviewClick(event) {
+  const pickButton = event.target.closest('button[data-action="pick-reference-images"]');
+  if (pickButton) {
+    referenceImagesInput.click();
+    return;
+  }
+
+  const removeButton = event.target.closest('button[data-action="remove-reference-image"]');
+  if (!removeButton) {
+    return;
+  }
+
+  removeReferenceFileByIndex(Number.parseInt(removeButton.dataset.referenceIndex, 10));
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const payload = {
-    prompt: promptInput.value,
-    size: sizeInput.value,
-    customSize: customSizeInput.value,
-    quality: qualityInput.value,
-    outputFormat: outputFormatInput.value,
-    outputCompression: Number.parseInt(outputCompressionInput.value, 10),
-    background: backgroundInput.value,
-    moderation: moderationInput.value,
-    n: Number.parseInt(nInput.value, 10),
-    stream: streamInput.checked,
-    partialImages: streamInput.checked ? Number.parseInt(partialImagesInput.value, 10) : undefined,
-    user: userInput.value
-  };
+  const formData = new FormData();
+  formData.append("prompt", promptInput.value);
+  formData.append("size", sizeInput.value);
+  formData.append("customSize", customSizeInput.value);
+  formData.append("quality", qualityInput.value);
+  formData.append("outputFormat", outputFormatInput.value);
+  formData.append("outputCompression", String(Number.parseInt(outputCompressionInput.value, 10)));
+  formData.append("background", backgroundInput.value);
+  formData.append("moderation", moderationInput.value);
+  formData.append("n", String(Number.parseInt(nInput.value, 10)));
+  formData.append("stream", String(streamInput.checked));
+  if (streamInput.checked) {
+    formData.append("partialImages", String(Number.parseInt(partialImagesInput.value, 10)));
+  }
+  formData.append("user", userInput.value);
+
+  selectedReferenceFiles.forEach((file) => {
+    formData.append("referenceImages", file);
+  });
 
   submitButton.disabled = true;
   setStatus("图片生成中，请稍候...");
@@ -337,10 +494,7 @@ form.addEventListener("submit", async (event) => {
   try {
     const response = await fetch("/api/generate", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+      body: formData
     });
 
     const result = await response.json();
@@ -372,9 +526,17 @@ refreshHistoryButton.addEventListener("click", async () => {
 outputFormatInput.addEventListener("change", syncCompressionState);
 sizeInput.addEventListener("change", syncCustomSizeState);
 streamInput.addEventListener("change", syncStreamState);
+referenceImagesInput.addEventListener("change", (event) => {
+  addReferenceFiles(event.target.files);
+  referenceImagesInput.value = "";
+});
+referencePreview.addEventListener("click", handleReferencePreviewClick);
+clearReferenceImagesButton.addEventListener("click", clearReferenceFiles);
 latestResult.addEventListener("click", handleCardClick);
 historyList.addEventListener("click", handleCardClick);
 
 Promise.all([loadConfig(), loadHistory()]).catch((error) => {
   setStatus(error.message || "页面初始化失败", true);
 });
+
+renderReferencePreview();

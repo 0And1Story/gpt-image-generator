@@ -3,6 +3,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const { spawn } = require("child_process");
 const express = require("express");
+const multer = require("multer");
 const dotenv = require("dotenv");
 const OpenAI = require("openai");
 
@@ -49,6 +50,7 @@ const client = apiKey
 const DATA_DIR = path.join(__dirname, "data");
 const IMAGE_DIR = path.join(DATA_DIR, "images");
 const REQUEST_DIR = path.join(DATA_DIR, "requests");
+const REFERENCE_DIR = path.join(DATA_DIR, "references");
 const HISTORY_FILE = path.join(DATA_DIR, "history.json");
 
 const SIZE_PRESETS = [
@@ -71,9 +73,17 @@ const FORMAT_OPTIONS = new Set(["png", "jpeg", "webp"]);
 const BACKGROUND_OPTIONS = new Set(["auto", "opaque"]);
 const MODERATION_OPTIONS = new Set(["auto", "low"]);
 let historyWriteQueue = Promise.resolve();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024,
+    files: 16
+  }
+});
 
 app.use(express.json({ limit: "2mb" }));
 app.use("/images", express.static(IMAGE_DIR));
+app.use("/references", express.static(REFERENCE_DIR));
 app.use(express.static(path.join(__dirname, "public")));
 
 function createId() {
@@ -139,6 +149,13 @@ function simplifyImageObject(image) {
     revised_prompt: image.revised_prompt || null,
     rawKeys: Object.keys(image)
   };
+}
+
+function sanitizeFileName(name) {
+  return String(name || "reference")
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+    .replace(/\s+/g, "-")
+    .slice(0, 120);
 }
 
 function logGenerationError({ id, createdAt, requestPayload, recordRequest, responseDebug, error }) {
@@ -329,6 +346,7 @@ function normalizeSettings(input) {
 async function ensureStorage() {
   await fsp.mkdir(IMAGE_DIR, { recursive: true });
   await fsp.mkdir(REQUEST_DIR, { recursive: true });
+  await fsp.mkdir(REFERENCE_DIR, { recursive: true });
 
   try {
     await fsp.access(HISTORY_FILE, fs.constants.F_OK);
@@ -380,6 +398,34 @@ async function downloadImageFromUrl(url, filePath) {
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   await fsp.writeFile(filePath, buffer);
+}
+
+async function persistReferenceFiles(id, files) {
+  const savedReferences = [];
+  const uploadFiles = Array.isArray(files) ? files : [];
+
+  for (let index = 0; index < uploadFiles.length; index += 1) {
+    const file = uploadFiles[index];
+    const parsedName = path.parse(file.originalname || `reference-${index + 1}`);
+    const safeBaseName = sanitizeFileName(parsedName.name || `reference-${index + 1}`);
+    const ext = parsedName.ext || ".bin";
+    const fileName = `${id}-ref-${index + 1}-${safeBaseName}${ext}`;
+    const filePath = path.join(REFERENCE_DIR, fileName);
+
+    await fsp.writeFile(filePath, file.buffer);
+
+    savedReferences.push({
+      index,
+      originalName: file.originalname || `reference-${index + 1}`,
+      mimeType: file.mimetype || "application/octet-stream",
+      size: file.size,
+      referenceUrl: `/references/${fileName}`,
+      referencePath: path.relative(__dirname, filePath).replace(/\\/g, "/"),
+      absolutePath: filePath
+    });
+  }
+
+  return savedReferences;
 }
 
 async function persistGeneratedImages(id, images, outputFormat) {
@@ -488,6 +534,43 @@ async function collectStreamedImages(stream) {
   };
 }
 
+async function collectEditedStreamedImages(stream) {
+  const finalImages = [];
+  const partialEvents = [];
+  let completedEvent = null;
+  const allEvents = [];
+
+  for await (const event of stream) {
+    allEvents.push(simplifyStreamEvent(event));
+
+    if (event.type === "image_edit.partial_image") {
+      partialEvents.push({
+        partialImageIndex: event.partial_image_index,
+        createdAt: event.created_at,
+        size: event.size,
+        quality: event.quality,
+        outputFormat: event.output_format
+      });
+      continue;
+    }
+
+    if (event.type === "image_edit.completed") {
+      completedEvent = event;
+      finalImages.push({
+        b64_json: event.b64_json,
+        url: event.url || null
+      });
+    }
+  }
+
+  return {
+    images: finalImages,
+    partialEvents,
+    completedEvent,
+    allEvents
+  };
+}
+
 function buildRequestPayload(settings) {
   const payload = {
     model: "gpt-image-2",
@@ -535,6 +618,17 @@ function buildRecordRequest(settings) {
   };
 }
 
+function buildReferenceSummary(references) {
+  return (Array.isArray(references) ? references : []).map((file) => ({
+    index: file.index,
+    originalName: file.originalName,
+    mimeType: file.mimeType,
+    size: file.size,
+    referenceUrl: file.referenceUrl,
+    referencePath: file.referencePath
+  }));
+}
+
 function buildSuccessResponseRecord({
   mode,
   requestId,
@@ -573,7 +667,7 @@ function buildSuccessResponseRecord({
 
   const images = rawResponse && Array.isArray(rawResponse.data) ? rawResponse.data : [];
   return {
-    mode: "non-stream",
+    mode: mode || "non-stream",
     requestId: requestId || null,
     status: 200,
     created: rawResponse && rawResponse.created ? rawResponse.created : null,
@@ -701,28 +795,118 @@ app.post("/api/open-image-folder", async (req, res) => {
   }
 });
 
-app.post("/api/generate", async (req, res) => {
+app.post("/api/generate", upload.array("referenceImages", 16), async (req, res) => {
   const id = createId();
   const createdAt = new Date().toISOString();
   let requestPayload = null;
   let recordRequest = null;
   let responseDebug = null;
+  let savedReferences = [];
 
   try {
     const settings = normalizeSettings(req.body || {});
+    savedReferences = await persistReferenceFiles(id, req.files || []);
     if (!client) {
       throw new Error("Missing OPENAI_API_KEY in environment.");
     }
 
     requestPayload = buildRequestPayload(settings);
     recordRequest = buildRecordRequest(settings);
+    recordRequest.referenceImages = buildReferenceSummary(savedReferences);
+    recordRequest.referenceImageCount = savedReferences.length;
 
     let rawResponse = null;
     let savedImages = [];
     let streamMeta = null;
     let requestId = null;
 
-    if (settings.stream) {
+    if (savedReferences.length > 0) {
+      const editPayload = {
+        image:
+          savedReferences.length === 1
+            ? fs.createReadStream(savedReferences[0].absolutePath)
+            : savedReferences.map((file) => fs.createReadStream(file.absolutePath)),
+        model: "gpt-image-2",
+        prompt: settings.prompt,
+        size: settings.size,
+        quality: settings.quality,
+        output_format: settings.outputFormat,
+        background: settings.background,
+        n: settings.n
+      };
+
+      if (settings.outputCompression !== undefined) {
+        editPayload.output_compression = settings.outputCompression;
+      }
+
+      if (settings.user) {
+        editPayload.user = settings.user;
+      }
+
+      if (settings.stream) {
+        editPayload.stream = true;
+        editPayload.partial_images = settings.partialImages;
+      }
+
+      requestPayload = {
+        ...requestPayload,
+        endpoint: "images.edit",
+        referenceImageCount: savedReferences.length
+      };
+
+      if (settings.stream) {
+        const streamedResponse = await client.images.edit(editPayload).withResponse();
+        const stream = streamedResponse.data;
+        requestId = streamedResponse.request_id || null;
+        const streamed = await collectEditedStreamedImages(stream);
+        responseDebug = {
+          mode: "reference-edit-stream",
+          requestId,
+          events: streamed.allEvents
+        };
+
+        if (!streamed.images.length) {
+          throw new Error("The API did not return an image.");
+        }
+
+        savedImages = await persistGeneratedImages(id, streamed.images, settings.outputFormat);
+        streamMeta = {
+          partialEvents: streamed.partialEvents,
+          completedEvent: streamed.completedEvent
+            ? {
+                createdAt: streamed.completedEvent.created_at,
+                background: streamed.completedEvent.background,
+                size: streamed.completedEvent.size,
+                quality: streamed.completedEvent.quality,
+                outputFormat: streamed.completedEvent.output_format,
+                usage: streamed.completedEvent.usage || null
+              }
+            : null
+        };
+      } else {
+        rawResponse = await client.images.edit(editPayload);
+        requestId = getRequestIdFromResponse(rawResponse);
+        const images = Array.isArray(rawResponse.data) ? rawResponse.data : [];
+        responseDebug = {
+          mode: "reference-edit",
+          requestId,
+          rawResponse: {
+            created: rawResponse && rawResponse.created ? rawResponse.created : null,
+            background: rawResponse && rawResponse.background ? rawResponse.background : null,
+            size: rawResponse && rawResponse.size ? rawResponse.size : null,
+            quality: rawResponse && rawResponse.quality ? rawResponse.quality : null,
+            output_format: rawResponse && rawResponse.output_format ? rawResponse.output_format : null,
+            data: images.map((image) => simplifyImageObject(image))
+          }
+        };
+
+        if (!images.length) {
+          throw new Error("The API did not return an image.");
+        }
+
+        savedImages = await persistGeneratedImages(id, images, settings.outputFormat);
+      }
+    } else if (settings.stream) {
       const streamedResponse = await client.images.generate(requestPayload).withResponse();
       const stream = streamedResponse.data;
       requestId = streamedResponse.request_id || null;
@@ -777,7 +961,7 @@ app.post("/api/generate", async (req, res) => {
 
     const firstImage = savedImages[0] || null;
     const responseRecord = buildSuccessResponseRecord({
-      mode: settings.stream ? "stream" : "non-stream",
+      mode: savedReferences.length > 0 ? responseDebug && responseDebug.mode : settings.stream ? "stream" : "non-stream",
       requestId,
       settings,
       rawResponse,
@@ -795,7 +979,9 @@ app.post("/api/generate", async (req, res) => {
         imagePath: firstImage ? firstImage.imagePath : null,
         revisedPrompt: firstImage ? firstImage.revisedPrompt : null,
         images: savedImages,
-        imageCount: savedImages.length
+        imageCount: savedImages.length,
+        referenceImages: recordRequest.referenceImages,
+        referenceImageCount: recordRequest.referenceImageCount
       },
       response: responseRecord,
       apiResponse: responseRecord,
@@ -834,7 +1020,9 @@ app.post("/api/generate", async (req, res) => {
         n: req.body && req.body.n !== undefined ? req.body.n : null,
         stream: req.body && req.body.stream !== undefined ? req.body.stream : null,
         partialImages: req.body && req.body.partialImages !== undefined ? req.body.partialImages : null,
-        user: String((req.body && req.body.user) || "")
+        user: String((req.body && req.body.user) || ""),
+        referenceImages: buildReferenceSummary(savedReferences),
+        referenceImageCount: savedReferences.length
       },
       response: buildErrorResponseRecord({
         requestId: responseDebug && responseDebug.requestId ? responseDebug.requestId : null,

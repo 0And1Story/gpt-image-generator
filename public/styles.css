@@ -64,6 +64,25 @@ h2 {
   gap: 16px;
 }
 
+.reference-section {
+  display: grid;
+  gap: 10px;
+}
+
+.reference-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.small-text {
+  margin-bottom: 0;
+  font-size: 13px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -160,6 +179,23 @@ button {
   border: 1px solid var(--line);
 }
 
+.small-button {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .status {
   min-height: 24px;
   font-size: 14px;
@@ -189,6 +225,136 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
+}
+
+.reference-grid,
+.reference-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 112px));
+  justify-content: start;
+  gap: 12px;
+}
+
+.reference-tile,
+.reference-item {
+  margin: 0;
+  width: 112px;
+}
+
+.reference-tile {
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.reference-tile-filled {
+  background: #eef2f6;
+}
+
+.reference-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.reference-tile img,
+.reference-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.reference-tile figcaption,
+.reference-item figcaption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-word;
+  text-align: center;
+}
+
+.reference-add-tile {
+  border: 1px dashed var(--line);
+  background: #fafbfc;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.reference-add-tile:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #f4fbfa;
+}
+
+.reference-add-icon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.reference-add-icon::before,
+.reference-add-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.reference-add-icon::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.reference-add-label {
+  font-size: 12px;
+}
+
+.reference-remove-button {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(185, 28, 28, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.reference-remove-button::before,
+.reference-remove-button::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 2px;
+  background: #fff;
+  border-radius: 999px;
+}
+
+.reference-remove-button::before {
+  transform: rotate(45deg);
+}
+
+.reference-remove-button::after {
+  transform: rotate(-45deg);
+}
+
+.reference-remove-button:hover {
+  background: rgba(153, 27, 27, 0.82);
 }
 
 .image-item {

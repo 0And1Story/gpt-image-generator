@@ -25,6 +25,22 @@
             ></textarea>
           </label>
 
+          <section class="reference-section">
+            <div class="reference-header">
+              <span>参考图</span>
+              <button id="clear-reference-images" type="button" class="ghost-button small-button hidden">清空</button>
+            </div>
+            <input
+              id="referenceImages"
+              name="referenceImages"
+              class="visually-hidden"
+              type="file"
+              accept=".png,.jpg,.jpeg,.webp"
+              multiple
+            />
+            <div id="reference-preview" class="reference-grid"></div>
+          </section>
+
           <div class="grid">
             <label>
               <span>尺寸</span>

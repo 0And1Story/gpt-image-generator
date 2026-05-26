@@ -50,6 +50,30 @@ function formatDate(value) {
   }
 }
 
+function buildPromptHtml(label, text, { compact = false } = {}) {
+  const normalized = String(text || "-");
+  const safeText = escapeHtml(normalized);
+  const shouldCollapse = compact && normalized.length > 180;
+
+  if (!shouldCollapse) {
+    return `<div><strong>${label}：</strong><span class="prompt-text">${safeText}</span></div>`;
+  }
+
+  const preview = `${escapeHtml(normalized.slice(0, 180))}...`;
+  return `
+    <div class="prompt-row">
+      <strong>${label}：</strong>
+      <details class="prompt-details">
+        <summary>
+          <span class="prompt-preview">${preview}</span>
+          <span class="prompt-toggle" aria-hidden="true"></span>
+        </summary>
+        <div class="prompt-expanded prompt-text">${safeText}</div>
+      </details>
+    </div>
+  `;
+}
+
 function buildImagesHtml(images) {
   if (!Array.isArray(images) || !images.length) {
     return "";
@@ -61,7 +85,21 @@ function buildImagesHtml(images) {
         .map(
           (image, index) => `
             <figure class="image-item">
-              <img src="${image.imageUrl}" alt="Generated image ${index + 1}" />
+              <div class="image-frame">
+                <img src="${image.imageUrl}" alt="Generated image ${index + 1}" />
+                ${
+                  image.imagePath
+                    ? `<button
+                        class="image-folder-button"
+                        type="button"
+                        data-action="open-image-folder"
+                        data-image-path="${escapeHtml(image.imagePath)}"
+                        aria-label="打开文件夹"
+                        title="打开文件夹并选中当前图片"
+                      ></button>`
+                    : ""
+                }
+              </div>
               <figcaption>第 ${index + 1} 张</figcaption>
             </figure>
           `
@@ -122,7 +160,7 @@ function renderCard(item, { compact = false } = {}) {
         <div class="meta">
           <div><strong>时间：</strong>${escapeHtml(formatDate(item.createdAt))}</div>
           <div><strong>状态：</strong><code>error</code></div>
-          <div><strong>提示词：</strong><span class="prompt-text">${escapeHtml(item.request.prompt || "-")}</span></div>
+          ${buildPromptHtml("提示词", item.request.prompt || "-", { compact })}
           <div><strong>尺寸：</strong><code>${escapeHtml(item.request.customSize || item.request.size || "-")}</code></div>
           <div><strong>错误：</strong><span class="prompt-text">${escapeHtml(item.error?.message || "未知错误")}</span></div>
           ${responseSummary}
@@ -137,7 +175,7 @@ function renderCard(item, { compact = false } = {}) {
     .filter((image) => image.revisedPrompt)
     .map(
       (image, index) =>
-        `<div><strong>修订提示词 ${index + 1}：</strong><span class="prompt-text">${escapeHtml(image.revisedPrompt)}</span></div>`
+        buildPromptHtml(`修订提示词 ${index + 1}`, image.revisedPrompt, { compact })
     )
     .join("");
   const streamText = item.request.stream ? `已启用，partial_images=${item.request.partialImages}` : "未启用";
@@ -158,7 +196,7 @@ function renderCard(item, { compact = false } = {}) {
         <div><strong>压缩：</strong><code>${escapeHtml(String(item.request.outputCompression ?? "-"))}</code></div>
         <div><strong>用户标识：</strong><code>${escapeHtml(item.request.user || "-")}</code></div>
         <div><strong>API_BASE_URL：</strong><code>${escapeHtml(item.request.apiBaseUrl || "-")}</code></div>
-        <div><strong>提示词：</strong><span class="prompt-text">${escapeHtml(item.request.prompt)}</span></div>
+        ${buildPromptHtml("提示词", item.request.prompt, { compact })}
         ${responseSummary}
         ${revisedPrompts}
       </div>
@@ -241,6 +279,40 @@ async function loadHistory() {
   renderHistory(items);
 }
 
+async function openImageFolder(imagePath) {
+  setStatus("正在打开图片所在文件夹...");
+
+  try {
+    const response = await fetch("/api/open-image-folder", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imagePath
+      })
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "打开文件夹失败");
+    }
+
+    setStatus("已打开图片所在文件夹。");
+  } catch (error) {
+    setStatus(error.message || "打开文件夹失败", true);
+  }
+}
+
+function handleCardClick(event) {
+  const button = event.target.closest('button[data-action="open-image-folder"]');
+  if (!button) {
+    return;
+  }
+
+  openImageFolder(button.dataset.imagePath || "");
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -300,6 +372,8 @@ refreshHistoryButton.addEventListener("click", async () => {
 outputFormatInput.addEventListener("change", syncCompressionState);
 sizeInput.addEventListener("change", syncCustomSizeState);
 streamInput.addEventListener("change", syncStreamState);
+latestResult.addEventListener("click", handleCardClick);
+historyList.addEventListener("click", handleCardClick);
 
 Promise.all([loadConfig(), loadHistory()]).catch((error) => {
   setStatus(error.message || "页面初始化失败", true);

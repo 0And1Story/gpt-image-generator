@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const fsp = require("fs/promises");
+const { spawn } = require("child_process");
 const express = require("express");
 const dotenv = require("dotenv");
 const OpenAI = require("openai");
@@ -605,6 +606,48 @@ function buildErrorResponseRecord({ requestId, responseDebug, error }) {
   };
 }
 
+function resolveLocalImagePath(imagePath) {
+  const normalizedInput = String(imagePath || "").trim();
+  if (!normalizedInput) {
+    throw new Error("imagePath is required.");
+  }
+
+  const absolutePath = path.isAbsolute(normalizedInput)
+    ? path.normalize(normalizedInput)
+    : path.resolve(__dirname, normalizedInput);
+  const relativeToImages = path.relative(IMAGE_DIR, absolutePath);
+
+  if (
+    !relativeToImages ||
+    relativeToImages.startsWith("..") ||
+    path.isAbsolute(relativeToImages)
+  ) {
+    throw new Error("imagePath must point to a local generated image.");
+  }
+
+  return absolutePath;
+}
+
+function openImageInFolder(absolutePath) {
+  if (process.platform === "win32") {
+    const child = spawn("explorer.exe", [`/select,${absolutePath.replace(/\//g, "\\")}`], {
+      detached: true,
+      stdio: "ignore"
+    });
+    child.unref();
+    return;
+  }
+
+  const directory = path.dirname(absolutePath);
+  const command = process.platform === "darwin" ? "open" : "xdg-open";
+  const args = process.platform === "darwin" ? ["-R", absolutePath] : [directory];
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore"
+  });
+  child.unref();
+}
+
 app.get("/api/config", (_req, res) => {
   res.json({
     sizeOptions: SIZE_PRESETS,
@@ -623,6 +666,39 @@ app.get("/api/config", (_req, res) => {
 app.get("/api/history", async (_req, res) => {
   const history = await readHistory();
   res.json(history);
+});
+
+app.post("/api/open-image-folder", async (req, res) => {
+  try {
+    const absolutePath = resolveLocalImagePath(req.body && req.body.imagePath);
+    await fsp.access(absolutePath, fs.constants.F_OK);
+    openImageInFolder(absolutePath);
+
+    res.json({
+      ok: true,
+      imagePath: path.relative(__dirname, absolutePath).replace(/\\/g, "/")
+    });
+  } catch (error) {
+    const message = error && error.message ? error.message : "Failed to open image folder.";
+    const statusCode = /required|must point/i.test(message) ? 400 : /ENOENT/i.test(message) ? 404 : 500;
+
+    console.error(
+      "[gpt-image-2] Failed to open image folder",
+      JSON.stringify(
+        {
+          imagePath: req.body && req.body.imagePath ? req.body.imagePath : null,
+          message,
+          stack: error && error.stack ? error.stack : null
+        },
+        null,
+        2
+      )
+    );
+
+    res.status(statusCode).json({
+      error: message
+    });
+  }
 });
 
 app.post("/api/generate", async (req, res) => {

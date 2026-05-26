@@ -1,5 +1,5 @@
 {
-  "name": "gpt-image-2-generation",
+  "name": "gpt-image-generator",
   "version": "1.0.0",
   "private": true,
   "description": "Simple web app for generating images with gpt-image-2.",

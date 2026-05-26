@@ -1,4 +1,4 @@
-# GPT Image 2 Generation
+# GPT Image Generator
 
 一个简易网页程序，用于通过 OpenAI `gpt-image-2` API 生成图片，并将请求记录、结果 JSON 和图片文件持久化到本地。
 

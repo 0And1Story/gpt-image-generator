@@ -87,14 +87,13 @@ function buildImagesHtml(images) {
   return `
     <div class="image-list">
       ${images
-        .map(
-          (image, index) => `
+      .map(
+        (image, index) => `
             <figure class="image-item">
               <div class="image-frame">
                 <img src="${image.imageUrl}" alt="Generated image ${index + 1}" />
-                ${
-                  image.imagePath
-                    ? `<button
+                ${image.imagePath
+            ? `<button
                         class="image-folder-button"
                         type="button"
                         data-action="open-image-folder"
@@ -102,14 +101,14 @@ function buildImagesHtml(images) {
                         aria-label="打开文件夹"
                         title="打开文件夹并选中当前图片"
                       ></button>`
-                    : ""
-                }
+            : ""
+          }
               </div>
               <figcaption>第 ${index + 1} 张</figcaption>
             </figure>
           `
-        )
-        .join("")}
+      )
+      .join("")}
     </div>
   `;
 }
@@ -122,15 +121,15 @@ function buildReferenceImagesHtml(images) {
   return `
     <div class="reference-list">
       ${images
-        .map(
-          (image, index) => `
+      .map(
+        (image, index) => `
             <figure class="reference-item">
               <img src="${image.referenceUrl}" alt="Reference image ${index + 1}" />
               <figcaption>参考图 ${index + 1}</figcaption>
             </figure>
           `
-        )
-        .join("")}
+      )
+      .join("")}
     </div>
   `;
 }
@@ -216,19 +215,19 @@ function buildResponseSummary(item) {
     : "-";
   const imageSources = Array.isArray(response.imageSources) && response.imageSources.length
     ? response.imageSources
-        .map((source) => {
-          if (source === "b64_json") {
-            return "base64本地保存";
-          }
-          if (source === "url_downloaded") {
-            return "远程URL已下载";
-          }
-          if (source === "url_remote_fallback") {
-            return "远程URL未落盘";
-          }
-          return source;
-        })
-        .join(", ")
+      .map((source) => {
+        if (source === "b64_json") {
+          return "base64本地保存";
+        }
+        if (source === "url_downloaded") {
+          return "远程URL已下载";
+        }
+        if (source === "url_remote_fallback") {
+          return "远程URL未落盘";
+        }
+        return source;
+      })
+      .join(", ")
     : "-";
 
   return `

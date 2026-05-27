@@ -2,10 +2,15 @@ const path = require("path");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const { spawn } = require("child_process");
+const { File } = require("node:buffer");
 const express = require("express");
 const multer = require("multer");
 const dotenv = require("dotenv");
 const OpenAI = require("openai");
+
+if (typeof globalThis.File === "undefined") {
+  globalThis.File = File;
+}
 
 dotenv.config();
 

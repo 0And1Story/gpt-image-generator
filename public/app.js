@@ -119,18 +119,25 @@ function buildReferenceImagesHtml(images) {
   }
 
   return `
-    <div class="reference-list">
+    <section class="reference-history-section">
+      <div class="reference-header">
+        <span>参考图</span>
+      </div>
+      <div class="reference-list">
       ${images
-      .map(
-        (image, index) => `
-            <figure class="reference-item">
-              <img src="${image.referenceUrl}" alt="Reference image ${index + 1}" />
+        .map(
+          (image, index) => `
+            <figure class="reference-tile reference-tile-filled reference-history-tile">
+              <div class="reference-frame">
+                <img src="${image.referenceUrl}" alt="Reference image ${index + 1}" />
+              </div>
               <figcaption>参考图 ${index + 1}</figcaption>
             </figure>
           `
-      )
-      .join("")}
-    </div>
+        )
+        .join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -278,8 +285,8 @@ function renderCard(item, { compact = false } = {}) {
 
   return `
     <article class="${compact ? "history-card" : "result-card"}">
-      ${referenceImagesHtml}
       ${buildImagesHtml(images)}
+      ${referenceImagesHtml}
       <div class="meta">
         <div><strong>时间：</strong>${escapeHtml(formatDate(item.createdAt))}</div>
         <div><strong>尺寸：</strong><code>${escapeHtml(sizeText)}</code></div>
